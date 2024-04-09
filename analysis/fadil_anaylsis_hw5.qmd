@@ -6,3 +6,30 @@ format:
     embed-resources: true
 ---
 
+```{r}
+#| warning: false
+library("tidyverse")
+library("lme4")
+library("lmerTest")
+library("emmeans")
+library("logistf")
+library("cowplot")
+```
+
+## Prediction in the maze
+
+background stuff. The hypothesis was...
+
+## Codebook/Data Dictionary
+
+These are the variables in the raw data...
+
+## Importing Data
+
+```{r}
+here::i_am("analysis/fadil_anaylsis_hw5.qmd")
+d <- read.csv(here("data/delong maze 40Ss.csv",sep=""), 
+              header = 0, sep = ",", comment.char = "#", strip.white = T,
+              col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"));
+
+```
