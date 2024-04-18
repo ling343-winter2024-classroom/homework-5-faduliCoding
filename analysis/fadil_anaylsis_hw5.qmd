@@ -1,0 +1,319 @@
+---
+title: "LING343 Homework 5"
+author: "Fadil Al-Husseini"
+format:
+  html:
+    embed-resources: true
+---
+## Setup
+```{r}
+#| code-fold: true
+#| warning: false
+# install.packages("tidyverse")
+# install.packages("lme4")
+# install.packages("lmerTest")
+# install.packages("emmeans")
+# install.packages("logistf")
+# install.packages("cowplot")
+# install.packages("here")
+# install.packages("kableExtra")
+# install.packages("gt")
+
+library("tidyverse")
+library("lme4")
+library("lmerTest")
+library("emmeans")
+library("logistf")
+library("cowplot")
+library("here")
+library("kableExtra")
+library("gt")
+
+here::i_am("analysis/fadil_anaylsis_hw5.qmd")
+```
+
+These are packages that will be useful for tidying data, creating tables, and doing statistical tests. The path to find the quarto file is also established.
+
+```{r}
+#| code-fold: true
+
+# CSV data is read in after finding the file with here
+rawData <- read.csv(here("data/delong maze 40Ss.csv"), 
+              header = 0, sep = ",", comment.char = "#", strip.white = T,
+# Naming columns
+              col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"))
+```
+
+This codeblock reads in data from the CSV file, which we will use for our analysis.
+
+## Prediction in The Maze
+
+Many theories of language processing have linguistic content prediction as a core assumption. This study seeks to demonstrate that the maze task has utility as a methodology for investigating the role of content prediction in comprehension. 
+
+This was done via the use of an Auto-Maze task, using natural language processing. The A-maze task used high cloze probability sentence contexts, wherein both the noun predictability and the form of the immediately preceding articles was manipulated. 
+
+```{r}
+#| echo: FALSE
+exampleSentences <- data.frame(
+  Expected = c("Expected", "Unexpected"),
+  Sentence = c("The highlight of Jack’s trip to India was when he got to ride an elephant in the parade.", "The highlight of Jack’s trip to India was when he got to ride a bicycle in the parade.")
+)
+
+exampleSentences %>%
+  gt() %>%
+  cols_label(Expected = "", Sentence = "Sentence") %>%
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "black",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  )
+```
+
+Above is a table of example sentences, one expected and one unexpected.
+
+The results of the study illustrated that the maze task is sensitive to expectation, and is indeed a useful methodology for investigating the role of prediction in comprehension.
+
+## Codebook Dictionary
+
+The variables from the raw data are defined as follows:
+```{r}
+#| echo: FALSE
+# Making a data frame with variable codebook information
+dataCodeBook <- data.frame(
+  Variable_Name = c("Index", "Time", "Counter", "Hash", "Owner", "Controller", "Item", "Element", "Type", "Group", "Fieldname", "Value", "WordNum", "Word", "Alt", "WordOn", "CorrWord", "RT", "Sent", "TotalTime", "Question", "Resp", "Acc", "RespRT"),
+  Data_Type = c("Numeric", "TIME", "Numeric", "Characters", "Characters", "Characters", "Numeric", "Numeric", "Characters", "Numeric", "Characters", "Characters", "Numeric", "Characters", "Characters", "Numeric", "Characters", "Numeric", "Characters", "Numeric", "Characters", "Characters", "Numeric", "Numberic"),
+  Values = c("", "YYYY-MM-DD T HH:MM:SS", "", "", "", "", "", "", "", "", "", "", "", "", "", "0 = left, 1 = right", "", "", "", "", "", "e = yes, i = no", "", ""),
+  Variable_Label = c("Zero-index of User", "Date and Time", "", "Hash of User", "Logged in as Owner Y/N", "Question Type", "Item ID", "ID of Element", "Type of Cloze", "Group ID", "Name of Field", "Field Data", "Word ID", "Word", "Alternative Word", "Left or Right", "Correct Selection Y/N", "First Answer Reading Time", "Sentence", "Total Time", "Question Asked", "Question Answer", "Correct Selection", "Answer Response Time")
+)
+
+dataCodeBook %>%
+  gt() %>%
+  cols_label(Variable_Name = "Variable Name", Data_Type = "Data Type", Variable_Label = "Variable Label") %>%
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "black",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  )
+```
+## Questions
+### How many participants do you have data for total?
+
+The hash is unique for every user, so counting the amount of unique hash values will provide the number of participants for us. Firstly, we need to sort through the data to get the unique hash values.
+
+```{r}
+# Filter is used to remove the "Hash" descriptor
+uniqueHashes <- unique(filter(rawData, Hash != "Hash")$Hash)
+uniqueHashes
+```
+This is a list of unique hash values.
+
+```{r}
+# Counts the number of values in the list
+participantNumber <- length(uniqueHashes)
+```
+
+Here, the unique hash values are counted.
+
+The count provides us with the number of participants, which is `r participantNumber`.
+
+### How many rows of data remained after removing the trials, per the "Data Analysis" section?
+
+Firstly, we'll remove data that is not relevant to the Maze trials, such as data on the participants and practice trials.
+```{r}
+dataUpdate1 <- rawData %>%
+  # Remove non-Maze data
+  filter(Controller == "Maze") %>%
+  # Removes practice data
+  filter(Type != "practice") %>%
+  # Removes non-Maze question data
+  select(-Question, -Resp, -Acc, -RespRT)
+```
+
+This gives us the relevant data. However, still need to split up the information given to us for the type of cloze.
+
+```{r}
+dataUpdate2 <- dataUpdate1 %>%
+# Using periods as a boundary marker, the data is separated into new columns
+  separate(col = Type, into = c("exp", "item", "expect", "position", "pos", "cloze", "art.cloze", "n.cloze"), sep = "\\.", convert = TRUE, fill = "right")
+# Scale on centered noun-cloze probability data
+dataUpdate2$n.cloze.scale <- scale(dataUpdate2$n.cloze)
+dataUpdate2$art.cloze.scale <- scale(dataUpdate2$art.cloze)
+```
+
+Here, not only is the data split, but we center the noun-cloze data and scale it.
+
+```{r}
+dataUpdate3 <- dataUpdate2 %>%
+  # Removal of item 29
+  filter(item != 29) %>%
+  # Removal of subject 1
+  filter(Hash != "9dAvrH0+R6a0U5adPzZSyA")
+  
+  # Current row count
+rowCount <- nrow(dataUpdate3)
+```
+
+Data with Item 29 has a coding error, so it will be excluded from the data. Not only that, but due to the low accuracy of subject 1's performance, their data will be excluded, too.
+
+This gives us `r rowCount` row(s) so far.
+
+```{r}
+# Make WordNum an integer
+dataUpdate3 <- dataUpdate3 %>%
+  transform(WordNum = as.integer(WordNum))
+
+# Make expect into a factor
+dataUpdate3 <- dataUpdate3 %>%
+  transform(expect = factor(expect))
+
+# Assign the increment of the difference betweeb the word number and pos.
+dataUpdate3$rgn.fix <- dataUpdate3$WordNum - dataUpdate3$pos + 1
+# Scale on centered word number data
+dataUpdate3$word.num.z <- scale(dataUpdate3$WordNum)
+# Length of the word
+dataUpdate3$word.len <- nchar(as.character(dataUpdate3$Word))
+# Length of the alternative word
+dataUpdate3$Altword.len <- nchar(as.character(dataUpdate3$Alt))
+# Categorical factor using expectation
+contrasts(dataUpdate3$expect) <- c(-.5,.5)
+# Adds the item and expected, separated by a period
+dataUpdate3$item.expect <- paste(dataUpdate3$item, dataUpdate3$expect, sep=".")
+```
+
+Here, we do something similar with the word number, along with adding columns for the word length and alternative word length. From there, we use the values -0.5 and 0.5 to create a categorical factor using expectation.
+
+```{r}
+# Coding the correct word from Y/N into numerals
+dataUpdate3$Acc <- as.numeric(as.character(recode(dataUpdate3$CorrWord, yes = "1", no = "0")))
+
+dataUpdate3 %>%
+  filter(rgn.fix > -4 & rgn.fix < 4) %>%
+  # Groups by user
+  group_by(Hash) %>%
+  # Getting the mean and standard deviation of the correct data
+  summarize(n = n(), acc = mean(Acc), sd = sd(Acc), error = 1 - acc) %>%
+  # Keeping if the correctness is high
+  mutate(keep = acc > mean(acc)-2*sd(acc)) %>%
+  arrange(acc) %>%
+  as.data.frame()
+
+dataUpdate4 <- dataUpdate3 %>%
+  # Excluding the <90% values based off the chart
+  filter(Hash != "gyxidIf0fqXBM7nxg2K7SQ") %>%
+  filter(Hash != "f8dC3CkleTBP9lUufzUOyQ")
+```
+
+```{r}
+newRowNum = nrow(dataUpdate4)
+```
+
+Per the data analysis section, data was removed for the following reasons: 1) data for item 29, which was improperly coded and 2) participants that had under 70% comprehension and 3) participants with under 90% response accuracy. With all that done, there are `r newRowNum` rows remaining.
+
+### A table showing the mean, min, max, and standard deviation of participant ages
+
+Firstly, we need to get the ages for all of the participants. To get this data, we'll filter for "age" in the Field Name, which will contain the age in the Value of the same row and ensure that it's a numeric value.
+
+```{r}
+ageData <- rawData %>%
+  filter(FieldName == "age") %>%
+  transform(Value = as.numeric(Value))
+```
+
+Now that we have the age data, we can use the function mean, min, max, and sd to find the needed values from the columns.
+
+```{r}
+#| code-fold: true
+ageTableData <- data.frame(
+  # Mean function
+  Age_Mean = c(mean(ageData$Value)),
+  # Minimum function
+  Age_Min = c(min(ageData$Value)),
+  # Maximum function
+  Age_Max = c(max(ageData$Value)),
+  # Standard-deviation function
+  Age_SD = c(sd(ageData$Value))
+)
+# Table
+ageTableData %>%
+  gt() %>%
+  cols_label(Age_Mean = "Mean Age", Age_Min = "Minimum Age", Age_Max = "Maximum Age", Age_SD = "Standard Deviation") %>%
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "black",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  )
+```
+
+### The Figure in Figure 1
+
+Now, we seek to replicate a graph from Figure 1 of Husband 2022. To do this, statistical analysis must be performed on the tibble that we cleaned in question 2.
+
+```{r}
+# Making the response time into a numeric value
+dataUpdate4$RT <- as.numeric(dataUpdate4$RT)
+# Calculates the regression and groups by the expected value. Also gets the mean, standard deviation, and SD error.
+dataT <- dataUpdate4 %>% filter(rgn.fix > -4 & rgn.fix < 5) %>% filter(Acc == 1) %>% group_by(rgn.fix, expect) %>% summarize(n=n(), subj=length(unique(Hash)), rt=mean(RT), sd=sd(RT), stderr=sd/sqrt(subj)) %>% as.data.frame()
+# Recodes the values for mapping
+dataT$rgn <- as.factor(recode(dataT$rgn.fix, "-3"="CW-3", "-2"="CW-2", "-1"="CW-1", "0"="art", "1"="n","2"="CW+1", "3"="CW+2", "4"="CW+3"))
+# Orders
+dataT$rgn <- ordered(dataT$rgn, levels = c("CW-3", "CW-2", "CW-1", "art", "n", "CW+1", "CW+2", "CW+3"))
+# Create the plot
+ggplot(dataT, aes(x=rgn, y=rt, group=expect, shape=expect)) +
+  geom_line(stat = "identity", position=position_dodge(width=.3)) +
+  geom_point(stat = "identity", position=position_dodge(width=.3), size=3) +
+  geom_errorbar(aes(ymin = rt-stderr, ymax = rt+stderr), width=.15, position=position_dodge(width=.3)) +
+  scale_shape_manual(name="", labels=c("Expected", "Unexpected"), values = c(21,19)) + 
+  xlab("Word") + ylab("Reading Time (msec)") + 
+  theme_bw()
+```
+
+After doing statistical analysis, we graph by the response time, region, and include the expectation with standard deviation error. These error bars indicate that the two conditions are likely to be significantly different in a mixed efect model when not including the other's mean.
+
+Put simply, this means that there seems to be a significant difference for response length as it pertains to expectation. Not only does this tie into the idea of linguistic prediction as a core part of language processing, but it also illustrates the usefulness of the A-maze task for expectation and prediction in comprehension.
+
+### Table with the Same Results in Figure 1
+
+Lastly, we will create a table based on the data. As the plot includes information on response time, region, expectation, and error, these will be the factors that will be input into the table.
+
+```{r}
+#| code-fold: true
+# Data frame with expected, unexpected, and relative error data
+figureTable <- data.frame(
+  figs = c("Expected", "Unxpected", "Expected Error", "Unexpected Error"),
+  CW_03 = c("753.1880", "757.1725", "47.64731", "51.04644"),
+  CW_02 = c("733.0036", "742.7986", "51.58193", "68.61713"),
+  CW_01 = c("760.2436", "751.1713", "53.91667", "45.34454"),
+  art = c("674.1306", "719.3884", "37.48203", "56.51721"),
+  n = c("704.2190", "1061.6347", "42.56296", "90.37247"),
+  CW_11 = c("781.0073", "859.8654", "54.53322", "194.73727"),
+  CW_12 = c("785.0631", "793.6538", "54.12735", "64.84534"),
+  CW_13 = c("766.7514", "789.8782", "49.38319", "49.51578")
+)
+
+figureTable %>%
+  gt() %>%
+  cols_label(figs = "", CW_03 = "CW-1", CW_02 = "CW-2", CW_01 = "CW-3", art = "art", n = "n", CW_11 = "CW+1", CW_12 = "CW+2", CW_13 = "CW+3") %>%
+  tab_style(
+    style = cell_borders(
+      sides = c("top", "bottom"),
+      color = "black",
+      weight = px(1.5),
+      style = "solid"
+    ),
+    locations = cells_body()
+  )
+```
+
+This table gives us the same information as the graph, supporting the study's hypothesis.
