@@ -15,9 +15,10 @@ library(cowplot)
 #directory <- "C:\\Users\\Matt\\Dropbox\\Research\\delong maze\\"
 directory <- "C:\\Users\\cpgl0052\\Dropbox\\Research\\delong maze\\"
 
-d <- read.csv(paste(directory,"data\\delong maze 40Ss.csv",sep=""), 
+d <- read.csv(here("data/delong maze 40Ss.csv"), 
               header = 0, sep = ",", comment.char = "#", strip.white = T,
               col.names = c("Index","Time","Counter","Hash","Owner","Controller","Item","Element","Type","Group","FieldName","Value","WordNum","Word","Alt","WordOn","CorrWord","RT","Sent","TotalTime","Question","Resp","Acc","RespRT"));
+
 
 demo <- d[d$Controller == "Form",1:12]
 names(demo) <- c("Subject","MD5","TrialType","Number","Element","Experiment","Item","Field","Response","X","field","resp")
